@@ -1,0 +1,26 @@
+{% extends 'store/main.html' %}
+{% load static %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center mt-4">
+        <div class="col-4"><img src="{{ eachProduct.image.url }}" class="card-img-top w-75" alt="..."></div>
+
+        <div class="col-8" style="width: 25rem;">
+            <div class="card-body">
+                <h4 class="card-title m-1">Name: <b>{{ eachProduct.name }}</b></h4>
+                <h5 class="card-subtitle m-1">Price: <b>${{ eachProduct.price }}</b> </h5>
+                <p style="font-size: 14px;" class="btn btn-warning m-1 p-1">{{ eachProduct.category.name }}</p>
+                <br>
+                <a href="{% url 'product' eachProduct.pk  %}" data-product={{eachProduct.id}} data-action="add"
+                    class="btn btn-primary mt-5 update-cart"> Add to Cart </a>
+            </div>
+        </div>
+    </div>
+    <hr>
+    <p style="font-size: 15px;" class="card-text mt-1"><b>Description:</b> {{ eachProduct.description }}</p>
+    <br>
+
+</div>
+
+{% endblock content %}

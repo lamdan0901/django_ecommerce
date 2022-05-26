@@ -1,66 +1,86 @@
-from itertools import product
-from django.shortcuts import render, get_object_or_404
+from django.shortcuts import render
+from .models import *
+from django.core.paginator import Paginator, PageNotAnInteger, EmptyPage
 from django.http import JsonResponse
 import json
-import datetime
-from .models import *
-from .utils import cartData, guestOrder
+from django.views.decorators.csrf import csrf_exempt
 
 
-def store(request, category_slug=None):
-    data = cartData(request)
-    cartItems = data['cartItems']
-    category = None
+def store(request):
+    category = request.GET.get('category')
+    if category == None:
+        products = Product.objects.order_by('-price').filter(is_published=True)
+        page_num = request.GET.get("page")
+        paginator = Paginator(products, 8)
+        try:
+            products = paginator.page(page_num)
+        except PageNotAnInteger:
+            products = paginator.page(1)
+        except EmptyPage:
+            products = paginator.page(paginator.num_pages)
+    else:
+        products = Product.objects.filter(category__name=category)
     categories = Category.objects.all()
-    products = Product.objects.all()
-
-    if category_slug:
-        category = get_object_or_404(Category, slug=category_slug)
-        products = products.filter(category=category)
 
     context = {
-        'categories': categories,
-        'category': category,
         'products': products,
-        'cartItems': cartItems,
+        'categories': categories
     }
     return render(request, 'store/store.html', context)
 
 
+def productDetail(request, pk):
+    eachProduct = Product.objects.get(id=pk)
+    context = {'eachProduct': eachProduct}
+    return render(request, 'store/product_detail.html', context)
+
+
 def cart(request):
-    data = cartData(request)
 
-    cartItems = data['cartItems']
-    order = data['order']
-    items = data['items']
-
-    context = {'items': items, 'order': order, 'cartItems': cartItems}
+    if request.user.is_authenticated:
+        user = request.user
+        order, created = Order.objects.get_or_create(
+            user=user, complete=False)
+        items = order.orderitem_set.all()
+    else:
+        items = []
+        order = {"get_cart_total": 0, "get_cart_items": 0}
+    context = {'items': items, 'order': order}
     return render(request, 'store/cart.html', context)
 
 
 def checkout(request):
-    data = cartData(request)
-
-    cartItems = data['cartItems']
-    order = data['order']
-    items = data['items']
-
-    context = {'items': items, 'order': order, 'cartItems': cartItems}
+    if request.user.is_authenticated:
+        user = request.user
+        order, created = Order.objects.get_or_create(
+            user=user, complete=False)
+        items = order.orderitem_set.all()
+    else:
+        items = []
+        order = {"get_cart_total": 0, "get_cart_items": 0}
+    context = {'items': items, 'order': order}
     return render(request, 'store/checkout.html', context)
 
 
-def updateItem(request):
+def searchBar(request):
+    if request.method == 'GET':
+        query = request.GET.get('query')
+        if query:
+            products = Product.objects.filter(name__icontains=query)
+            return render(request, 'store/searchbar.html', {'products': products})
+        else:
+            print("No information to show")
+            return render(request, 'store/searchbar.html', {})
+
+
+def updateCart(request):
     data = json.loads(request.body)
     productId = data['productId']
     action = data['action']
-    # print('Action:', action)
-    # print('Product:', productId)
-
-    customer = request.user.customer
+    user = request.user
     product = Product.objects.get(id=productId)
     order, created = Order.objects.get_or_create(
-        customer=customer, complete=False)
-
+        user=user, complete=False)
     orderItem, created = OrderItem.objects.get_or_create(
         order=order, product=product)
 
@@ -70,43 +90,9 @@ def updateItem(request):
         orderItem.quantity = (orderItem.quantity - 1)
     elif action == 'delete':
         orderItem.quantity = 0
-
     orderItem.save()
 
-    if orderItem.quantity <= 0:
+    if(orderItem.quantity <= 0):
         orderItem.delete()
 
-    return JsonResponse('Item was modified', safe=False)
-
-
-def processOrder(request):
-    # create a transaction id with timestamp()
-    transaction_id = datetime.datetime.now().timestamp()
-    data = json.loads(request.body)
-
-    if request.user.is_authenticated:
-        customer = request.user.customer
-        order, created = Order.objects.get_or_create(
-            customer=customer, complete=False)
-    else:
-        customer, order = guestOrder(request, data)
-
-    total = float(data['form']['total'])  # it likes 'data.form.total' in js
-    order.transaction_id = transaction_id
-
-    # if total is equal to the total of the cart, set it to complete (just for security)
-    if total == order.get_cart_total:
-        order.complete = True
-    order.save()
-
-    if order.shipping == True:
-        ShippingAddress.objects.create(
-            customer=customer,
-            order=order,
-            address=data['shipping']['address'],
-            city=data['shipping']['city'],
-            state=data['shipping']['state'],
-            zipcode=data['shipping']['zipcode'],
-        )
-
-    return JsonResponse('Payment submitted..', safe=False)
+    return JsonResponse('It was modified', safe=False)
